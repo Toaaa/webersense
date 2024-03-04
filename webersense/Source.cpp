@@ -7,18 +7,22 @@ LPCSTR TargetProcess = "hl2.exe";
 bool ShowMenu = false;
 bool Unhook = false;
 bool ally_esp = false;
-bool ennemy_esp = true;
+bool enemy_esp = true;
 bool ally_box = false;
-bool ennemy_box = true;
+bool enemy_box = true;
 bool ally_skeleton = false;
-bool ennemy_skeleton = true;
+bool enemy_skeleton = true;
 bool ally_esp_health_bar = false;
-bool ennemy_esp_health_bar = true;
+bool enemy_esp_health_bar = true;
 bool ally_name = false;
-bool ennemy_name = true;
+bool enemy_name = true;
 bool crosshair = true;
 bool ImGui_Initialised = false;
 bool CreateConsole = false;
+bool aimbot = true;
+bool show_fov = true;
+float aim_fov = 10.f;
+float smooth = 75.f;
 
 namespace OverlayWindow {
 	WNDCLASSEX WindowClass;
@@ -34,11 +38,36 @@ namespace DirectX9Interface {
 	MSG Message = { NULL };
 }
 
+void DoAimbot(Vector3 headpos, float factor, bool show_fov) {
+	float fov = (factor / ((30 - aim_fov) - factor)) * 100;
+	float aimX = headpos.x - Process::WindowWidth / 2;
+	float aimY = headpos.y - Process::WindowHeight / 2;
+
+	if (show_fov) {
+		RGBA White = { 255, 255, 255, 255 };
+		DrawCircle((int)headpos.x, (int)headpos.y, fov, &White);
+	}
+	if (!aimbot || ShowMenu)
+		return;
+	if (!GetAsyncKeyState(VK_HOME) && !GetAsyncKeyState(VK_LBUTTON))
+		return;
+
+	if (abs(aimX) < fov && abs(aimY) < fov) {
+		if (smooth == 0) {
+			aimX *= 4;
+			aimY *= 4;
+		}
+		aimX *= (100 - smooth) / 100;
+		aimY *= (100 - smooth) / 100;
+		mouse_event(MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE, aimX, aimY, 0, 0);
+	}
+}
+
 void Draw() {
 	RGBA Cyan = { 0, 231, 255, 255 };
 	if (crosshair) DrawCircleFilled(Process::WindowWidth/2, Process::WindowHeight/2, 3, &Cyan);
 
-	if (!ally_esp && !ennemy_esp) {
+	if (!ally_esp && !enemy_esp && !aimbot && !show_fov) {
 		return;
 	}
 
@@ -103,6 +132,15 @@ void Draw() {
 			continue;
 		}
 
+		Vector3 neckpos = GetBonePos(bonematrix_addr, BoneID::HEAD);
+		neckpos.z += 5.f;
+		neckpos.y -= 2.f;
+		Vector3 w2s_neckpos;
+
+		if (!WorldToScreen(neckpos, w2s_neckpos)) {
+			continue;
+		}
+		DoAimbot(w2s_neckpos, sqrt(abs(w2s_headpos.x - w2s_neckpos.x) + abs(w2s_headpos.y - w2s_neckpos.y)), show_fov);
 
 #ifdef  _DEBUG
 		char ent_text[256];
@@ -113,19 +151,19 @@ void Draw() {
 
 
 		RGBA color = { 255, 255, 255, 255 };
-		if ((ent_team == localplayer_team && ally_box) || (ent_team != localplayer_team && ennemy_box)) {
+		if ((ent_team == localplayer_team && ally_box) || (ent_team != localplayer_team && enemy_box)) {
 			DrawEspBox2D(w2s_absOrigin, w2s_headpos, &color, 1);
 		}
 
-		if ((ent_team == localplayer_team && ally_name) || (ent_team != localplayer_team && ennemy_name)) {
+		if ((ent_team == localplayer_team && ally_name) || (ent_team != localplayer_team && enemy_name)) {
 			DrawNameTag(w2s_absOrigin, w2s_headpos, name);
 		}
 
-		if ((ent_team == localplayer_team && ally_esp_health_bar) || (ent_team != localplayer_team && ennemy_esp_health_bar)) {
+		if ((ent_team == localplayer_team && ally_esp_health_bar) || (ent_team != localplayer_team && enemy_esp_health_bar)) {
 			DrawHealthBar(w2s_absOrigin, w2s_headpos, health);
 		}
 
-		if ((ent_team == localplayer_team && ally_skeleton) || (ent_team != localplayer_team && ennemy_skeleton)) {
+		if ((ent_team == localplayer_team && ally_skeleton) || (ent_team != localplayer_team && enemy_skeleton)) {
 			DrawBones(bonematrix_addr, &color, 1);
 		}
 	}
@@ -145,11 +183,18 @@ void DrawMenu() {
 	ImGui::Checkbox("Name##ally", &ally_name);
 
 	ImGui::Separator();
-	ImGui::Checkbox("Ennemy ESP", &ennemy_esp);
-	ImGui::Checkbox("Box##ennemy", &ennemy_box);
-	ImGui::Checkbox("Skeleton##ennemy", &ennemy_skeleton);
-	ImGui::Checkbox("Healthbar##ennemy", &ennemy_esp_health_bar);
-	ImGui::Checkbox("Name##ennemy", &ennemy_name);
+	ImGui::Checkbox("Enemy ESP", &enemy_esp);
+	ImGui::Checkbox("Box##enemy", &enemy_box);
+	ImGui::Checkbox("Skeleton##enemy", &enemy_skeleton);
+	ImGui::Checkbox("Healthbar##enemy", &enemy_esp_health_bar);
+	ImGui::Checkbox("Name##enemy", &enemy_name);
+
+	ImGui::Separator();
+	ImGui::Checkbox("Aimbot", &aimbot);
+	ImGui::SameLine();
+	ImGui::Checkbox("Show FOV", &show_fov);
+	ImGui::SliderFloat("FOV", &aim_fov, 1.f, 30.f, "%1.f", 1.f);
+	ImGui::SliderFloat("Smoothing", &smooth, 0.f, 100.f, "%1.f", 1.f);
 
 	ImGui::Separator();
 	if (ImGui::Button("Unhook")) {
